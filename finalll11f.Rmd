@@ -1,0 +1,304 @@
+---
+title: "Final Project"
+author: "Team"
+date: "2/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+Sys.setenv(JAVA_HOME='C:\\Program Files (x86)\\Java\\jre1.8.0_241') # for 32-bit version
+#install.packages('rJava', type = 'source', INSTALL_opts='--merge-multiarch')
+options(java.parameters="-Xmx4g")
+library(readxl)      
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(plotly)
+
+```
+
+```{r}
+Alex_Detailed <- "Alex Water Detailed.xlsx"
+year_2016 <- read_excel(Alex_Detailed, 1)
+year_2017 <- read_excel(Alex_Detailed, 2)
+year_2018 <- read_excel(Alex_Detailed, 3)
+year_2019 <- read_excel(Alex_Detailed, 4)
+names(year_2019)
+#Stote duplicate columns in other df
+complain_types <- unique(year_2019[, c('ComplainTypeID','ComplainTypeName')])
+complain_classes <- unique(year_2019[, c('ComplainClassID','ComplainClassName')])
+Sources <-  unique(year_2019[, c('SourceID...20','SourceName')])
+
+Sectors <-  select(read_excel("Alex Water Area Sector Town.xlsx", 2),c("SectorID","SectorName"))
+towns <- select(read_excel("Alex Water Area Sector Town.xlsx", 3),c("TownID","SectorID","TownName"))
+Areas <-  select(read_excel("Alex Water Area Sector Town.xlsx", 1),c("AreaID","AreaName","LocationID","TownID","SectorID"))
+#Location code 323 not found
+Locations <-   select(read_excel("Alex Water Area Sector Town.xlsx", 4), c("LocationID","LocationName"))
+
+#Drop duplicate columns and columns full of NULLS
+#dropped LocationCode and  because we have another LocationID so we don't need it 
+# we don't have cases dataset so we droped CaseID
+# it's too hard to make filterations and decisions using Street names and notes because it has alot of typing mistakes
+drops1 <- c("X","Y","MainStreetID", "LandMarkID","LocationTypeID","LocationCode", 'AreaCode',
+           'ComplainTypeName','ComplainClassName',"SourceName","SectorName","TownName","AreaName","AreaCode",
+           "CaseID", "HomeNumber", "SideStreet", "MainStreet", "Notes" , "Date_Time2")
+drops2 <- c("Quarter","Month Value")
+## Converting columns of double type to factor type
+edited_col <- c("FloorNumberID","IsClosed","IsReported","IsReplied","IsFinalReplied","IsFollwed",
+                "IsReturned","SourceID","AreaID","SectorID","TownID",
+                "LocationID","ComplainTypeID","ComplainClassID","SourceID")
+#create new columns and drop duplicate column
+#extract companyID from completeNumber column then drop it because all other info in it we already have
+year_2019 %>%
+  select(- drops1) %>%
+  mutate(Company_ID = substr(CompleteNumber, 1, 1)) %>% 
+   select(- CompleteNumber) %>% 
+  select(- SourceID...41) %>% 
+  rename(SourceID = SourceID...20) %>% 
+   mutate_at( vars(edited_col), funs(as.factor)) %>%
+  mutate_at(vars("AppendTo"), funs(as.numeric)) -> clean_year_2019
+
+
+
+year_2018 %>%
+  select(- drops1) %>%
+  mutate(Company_ID = substr(CompleteNumber, 1, 1)) %>%
+   select(- CompleteNumber) %>% 
+  select(- SourceID...19) %>% 
+  rename(SourceID = SourceID...40) %>% 
+   mutate_at( vars(edited_col), funs(as.factor)) %>%
+  mutate_at(vars("AppendTo"), funs(as.numeric)) -> clean_year_2018
+
+
+
+year_2017 %>%
+  select(- drops1) %>%
+  mutate(Company_ID = substr(CompleteNumber, 1, 1)) %>%
+  select(- CompleteNumber) %>% 
+  select(- SourceID...19) %>% 
+  rename(SourceID = SourceID...40) %>% 
+  mutate_at( vars(edited_col), funs(as.factor)) %>% 
+  mutate_at(vars("AppendTo"), funs(as.numeric)) -> clean_year_2017
+
+
+
+year_2016 %>%
+  select(- drops1) %>%
+  mutate(Company_ID = substr(CompleteNumber, 1, 1)) %>%
+  select(- CompleteNumber) %>% 
+  select(- SourceID2) %>% 
+  select(- drops2) %>% 
+  mutate_at( vars(edited_col), funs(as.factor)) %>%
+  mutate_at(vars("AppendTo"), funs(as.numeric)) -> clean_year_2016
+
+
+
+Sectors <-  select(read_excel("Alex Water Area Sector Town.xlsx", 2),c("SectorID","SectorName"))
+towns <- select(read_excel("Alex Water Area Sector Town.xlsx", 3),c("TownID","SectorID","TownName"))
+Areas <-  select(read_excel("Alex Water Area Sector Town.xlsx", 1),c("AreaID","AreaName","LocationID","TownID","SectorID"))
+
+Sectors$SectorID <- as.factor(Sectors$SectorID)
+
+towns$SectorID <- as.factor(towns$SectorID)
+towns$TownID <- as.factor(towns$TownID)
+
+Areas$SectorID <- as.factor(Areas$SectorID)
+Areas$TownID <- as.factor(Areas$TownID)
+Areas$LocationID <- as.factor(Areas$LocationID)
+Areas$AreaID <- as.factor(Areas$AreaID)
+
+## adding locationid column to broken data using join
+broken_2017 <- read_excel('Book1.xlsx', 1)
+broken_2018 <- read_excel('Book2.xlsx', 1)
+broken_2019 <- read_excel('Book3.xlsx', 1)
+
+broken_2018 %>% 
+  inner_join(select(broken_2017, LocationID, LocationName) %>% rename(LocationID1 = LocationID)) %>%
+  mutate(if(is.na(LocationID)){ LocationID1} else { LocationID}) %>%
+  select(-c("LocationID", "LocationID1", "LocationName")) %>%
+  rename(LocationID = `if (...) NULL`) -> broken_2018
+
+broken_2019 %>% 
+  inner_join(select(broken_2017, LocationID, LocationName) %>% rename(LocationID1 = LocationID)) %>%
+  mutate(if(is.na(LocationID)){ LocationID1} else { LocationID}) %>%
+  select(-c("LocationID", "LocationID1", "LocationName")) %>%
+  rename(LocationID = `if (...) NULL`) -> broken_2019
+Names <- names(clean_year_2018)
+clean_year_2019 <- select(clean_year_2019, Names)
+clean_year_2016 <- select(clean_year_2016, Names)
+clean_year_2017 <- select(clean_year_2017, Names)
+
+Sources <- rename(Sources ,SourceID = SourceID...20)
+Sources$SourceID   <- as.factor(Sources$SourceID)
+
+all_years <- rbind(clean_year_2019, rbind(clean_year_2018, rbind(clean_year_2017, clean_year_2016)))
+#############
+broken_2017$CaseType <- broken_2019$CaseType[1]
+#############
+Names <- names(broken_2018)                        
+broken_2019 <- unique(select(broken_2019, Names))
+broken_2017 <- unique(select(broken_2017, Names))
+broken_2018 <- unique(broken_2018)
+all_broken <- rbind(broken_2019, rbind(broken_2018 ,broken_2017))
+##############
+complain_classes$ComplainClassID   <- as.factor(complain_classes$ComplainClassID)
+complain_types$ComplainTypeID <- as.factor(complain_types$ComplainTypeID)
+#############
+#Group all brokens in one dataset and make new date columns
+remove <- c("BrokeTime", "CloseTime", "FixDate", "OpenTime")
+all_broken %>% 
+  mutate(StartFix = ymd_hm(paste(BrokeTime, CloseTime)),
+         EndFix = ymd_hm(paste(FixDate, OpenTime))) %>%
+          select(- remove) -> all_broken
+
+all_broken$CaseType <- as.factor(all_broken$CaseType)
+mutate(all_broken, MeanTime = as.integer(EndFix - StartFix) / 60) -> all_broken
+all_broken$LocationID <- as.factor(all_broken$LocationID)
+levels(all_broken$LocationID) <- c("3"  , "43" ,  "83"  ,
+                                   "123" , "163" , "203"  ,
+                                   "243" , "363" , "283" ,
+                                   "443" , "483" , "523"  ,"1803")
+all_broken$LocationID[(all_broken$LocationID == 263)] <- 363
+Locations$LocationID <- as.factor(Locations$LocationID)
+
+```
+
+## Number of complains over date 
+```{r}
+inner_join(x = Sources, y = all_years, by = 'SourceID') %>%
+    mutate(date = date(Date_Time)) %>% 
+    group_by(date) %>%
+    summarize(num_of_complains = n()) %>%
+    ggplot(aes(x = date, y = num_of_complains, color = factor(year(date)))) +
+    geom_line() + 
+    labs(title = "Complains over date", x = "Date", y = "Num of Complains", color = "Year")
+
+```
+
+
+```{r}
+
+all_years %>% inner_join(complain_classes) %>%
+    group_by(ComplainClassName) %>%
+    summarize(num_of_complains = n()) %>%
+    ggplot(aes(x = ComplainClassName, y = num_of_complains, fill = ComplainClassName)) +
+    geom_col() + 
+    labs(title = "Complain num for each class", x = "Complain CLass", y = "Num of Complains", fill = "Complain CLass")
+```
+
+```{r}
+all_years %>% inner_join(complain_types) %>%
+    group_by(ComplainClassID, ComplainTypeID, ComplainTypeName) %>%
+    summarize(num_of_complains = n()) %>%
+    filter(ComplainClassID == 1, num_of_complains> 400) %>%
+    ggplot(aes(x = ComplainTypeName, y = num_of_complains, fill = ComplainTypeName)) +
+    geom_col() + 
+    labs(title = "Complain num for each type in water class", x = "Complain type", y = "Num of Complains", fill = "Complain type") +
+   theme(axis.text.x = element_text(angle = 90, size =  12, face = 90))
+```
+
+## table for closed and non closed
+```{r}
+Comp_type_close <- 
+all_years %>% inner_join(complain_types) %>%
+    group_by(ComplainTypeName, IsClosed) %>%
+    summarize(num_of_complains = n()) %>%
+    arrange(desc(num_of_complains))
+```
+
+##removed sources
+```{r}
+all_years %>% inner_join(Sources) %>%
+    filter(ComplainTypeID == 8) %>%
+    group_by(SourceName, SourceID) %>%
+    summarize(num_of_complains = n()) %>%
+    ggplot(aes(x = SourceID, y = num_of_complains, fill = SourceName)) +
+    geom_col() 
+
+```
+
+##removed sources
+```{r}
+all_years %>% inner_join(complain_types) %>%
+    filter(ComplainClassID == 1, SourceID != 2) %>%
+    group_by(ComplainTypeID, ComplainTypeName) %>%
+    summarize(num_of_complains = n()) %>%
+    filter(num_of_complains> 400) %>%
+    ggplot(aes(x = ComplainTypeID, y = num_of_complains, fill = ComplainTypeName)) +
+    geom_col() 
+```
+
+## table Min_fix_time for each pipe type
+```{r}
+Min_fix_time <- all_broken[!is.na(all_broken$PipeType),] %>%
+   group_by(PipeType) %>%
+   summarise(Mean_Fix_Time = mean(MeanTime), num_of_cases = n()) %>%
+  arrange(Mean_Fix_Time)
+```
+
+##chart of Min_fix_time
+```{r}
+all_broken[!is.na(all_broken$PipeType),] %>%
+   group_by(PipeType) %>%
+   summarise(Mean_Fix_Time = mean(MeanTime), num_of_cases = n()) %>%
+  arrange(Mean_Fix_Time) %>%
+  ggplot(aes(x = reorder(PipeType, Mean_Fix_Time) ,y = Mean_Fix_Time, fill =  PipeType)) +
+  geom_col() + 
+  theme(axis.text.x = element_blank(), axis.ticks = element_blank())
+```
+
+## table for inqta3 water
+```{r}
+#hageb kman elshakawy fe locationID fe elsheet eltany 3shan aqaren
+all_broken[ !(all_broken$CaseType == "كسر ماسورة مياه"),] %>%
+   inner_join(Locations) %>%
+   group_by(LocationName, LocationID) %>%
+   summarise(Mean_Fix_Time = mean(MeanTime), num_of_cases = n()) %>%
+  arrange(desc(num_of_cases)) 
+```
+
+## num_of_complains for type inqta3 per location sheet detailed
+```{r}
+
+all_years %>%
+  inner_join(Locations) %>%
+  filter(ComplainTypeID == 3) %>%
+   group_by(LocationID, LocationName) %>%
+  summarize(num_of_complains = n()) %>%
+  ggplot(aes(x = LocationID, y = num_of_complains, fill = LocationName))+
+  geom_col()
+#High num of cases or high mean number
+```
+
+## sheet broken
+```{r}
+#hageb kman elshakawy fe locationID fe elsheet eltany 3shan aqaren
+all_broken[ !(all_broken$CaseType == "كسر ماسورة مياه"),] %>%
+   inner_join(Locations) %>%
+   group_by(LocationID, LocationName) %>%
+   summarise(Mean_Fix_Time = mean(MeanTime), num_of_cases = n()) %>%
+  arrange(desc(num_of_cases)) %>%
+  ggplot(aes(x = reorder(LocationID,-num_of_cases) , y = Mean_Fix_Time, fill = LocationName)) +
+  geom_col()
+```
+
+## arrange in sheet broken for 
+```{r}
+all_broken %>%
+  filter(CaseType == "كسر ماسورة مياه") %>% 
+   group_by(LocationID) %>%
+   summarise(Mean_Fix_Time = mean(MeanTime), num_of_cases = n()) %>%
+  arrange(desc(num_of_cases)) 
+```
+
+##Remove
+```{r}
+
+   All_Years %>% inner_join(complain_types) %>%
+    group_by(ComplainClassID, ComplainTypeID, ComplainTypeName) %>%
+    filter(ComplainClassID == 3) %>%
+    summarize(num_of_complains = n()) %>%
+    ggplot(aes(x = ComplainTypeID, y = num_of_complains, fill = ComplainTypeName)) +
+    geom_col()
+```
